@@ -79,18 +79,28 @@ public:
 
   inline void init_search() {
 		// TODO: init all data fields
+    nodes.clear();
+    parent.clear();
+    frontier.clear();
+    bestID = -1;
+    curID = -1;
+    best = -1;
   }
 
   inline bool is_safe(const vid &x, const vid &y, const vid &t) {
 		// TODO: check whether (x, y, t) violate node constraints (cstrs) 
-    // auto nid = id(x, y);
-    // auto invlsEntry = cstrs.find(nid);
-    // // no constraints at (x, y)
-    // if (invlsEntry == cstrs.end())
-    //   return true;
-		// else { // invlsEntry gives list of unsafe intereval
-		//  ...
-		// }
+    if(grid.is_obstacle({x, y})) 
+      return false; 
+    long node_id = x * width + y;
+    auto it = cstrs.find(node_id);
+    if(it == cstrs.end()) 
+      return true;
+    else {
+      for(auto intervals : it->second) {
+        if(intervals.is_in(t))
+          return false;
+      }
+    }
     return false;
   }
 
@@ -129,15 +139,18 @@ public:
       // set the correct values  to model a 4-connected grid map:
       // four motions: up, down, left, right
       // each motion takes 1 time step
-      const static int nummoves = -1;
-      const static vid dx[] = {1};
-      const static vid dy[] = {0};
-      const static Cost w[] = {1};
+      const static int nummoves = 4;
+      const static vid dx[] = {1, -1, 0, 0};
+      const static vid dy[] = {0, 0, 1, -1};
+      const static Cost w[] = {1, 1, 1, 1};
       for (int i = 0; i < nummoves; i++) {
 
         vid nx = cur().v.x + dx[i];
         vid ny = cur().v.y + dy[i];
         Time nt = cur().v.t + w[i];
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+          continue;
+        }
 
         if (grid.is_obstacle({nx, ny}) || !is_safe(nx, ny, nt)) {
           continue;
@@ -149,7 +162,9 @@ public:
         // }
         ID nid = gen_node(nx, ny, nt);
 				// set g, h, parent value for the new node 
-				// ...
+        nodes[nid].g = cur().g + 1;
+        nodes[nid].h = hVal(nodes[nid].v, gx, gy);
+        parent[nid] = curID;
 
         q.push(nid);
         frontier.insert({nx, ny, nt});
@@ -162,6 +177,14 @@ public:
     vector<STState> res;
     ID cid = bestID;
     // TODO: extract the path
+    if(cid == -1)
+      printf("No path found\n");
+    else {
+      while(cid != -1) {
+        res.push_back(nodes[cide].v);
+        cid = parent[cid];
+      }
+    }
     return res;
   }
 
