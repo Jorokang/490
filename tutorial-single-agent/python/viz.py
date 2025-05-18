@@ -136,10 +136,10 @@ def get_plan(start: Vert, planfile: str) -> list[Trans]:
     return res
 
 
-def _draw_ani(g: GridMap, s: Vert, targets: list[Vert], trans: list[Trans], cstrs: dict[Vert, list[int]], 
+def _draw_ani(g: GridMap, s: Vert, targets: list[Vert], trans: list[Trans], cstrs: dict[Vert, list[int]],
               dyn_obsts: dict[int, list[State]] | None = None,
               framePerT: int = 2, frame_delay: int = 100, draw_trans: bool = True):
-    import matplotlib.colors as mc 
+    import matplotlib.colors as mc
     D = 50
     dx, dy = D / 2, D / 2
     tasks: dict[Vert, Collection] = {}
@@ -153,12 +153,8 @@ def _draw_ani(g: GridMap, s: Vert, targets: list[Vert], trans: list[Trans], cstr
 
     for objid, states in dyn_obsts.items():
         for v, t in states:
-            # if (dynObstID.get((v, t)) is not None and dynObstID[(v, t)] != objid):
-            #     print (f"({v}, {t})={dynObstID[(v, t)]},  {objid}")
-            # assert ( dynObstID.get((v, t)) is None or dynObstID[(v, t)] == objid )
             dynObstID[(v, t)] = objid
         candidate = list(mc.XKCD_COLORS.keys())
-        # init colors
         obstColor[objid] = mc.XKCD_COLORS[candidate[objid % len(candidate)]]
     for (v1, t1), (v2, t2), a in trans:
         if a is Action("SERVE"):
@@ -168,22 +164,41 @@ def _draw_ani(g: GridMap, s: Vert, targets: list[Vert], trans: list[Trans], cstr
     ax.set_axis_off()
     ax.invert_yaxis()
     fig, ax = draw_grid(fig, ax, (g.width, g.height), D=D)
-    draw_vert(fig, ax, g.obstacles(), c='black', alpha=1.0, m='rect', D=D) 
+    draw_vert(fig, ax, g.obstacles(), c='black', alpha=1.0, m='rect', D=D)
     curPos = draw_vert(fig, ax, [s], c='blue', alpha=0.5, m='o', D=D, s=2*D)
     for t in targets:
         tasks[t] = draw_vert(fig, ax, [t], c='orange', alpha=1, m='*', D=D, s=4*D)
     for v, times in cstrs.items():
         cstrObjs[v] = draw_vert(fig, ax, [v], alpha=0.1, m='rect', D=D, c='gray')
         dynObstObjs[v] = draw_vert(fig, ax, [v], alpha=0.1, m="P", D=D, c='gray')
-    for (v1, t1), (v2, t2), a in trans:
-        if a is Action("SERVE"):
-            servetime[v2] = t2
+
     initT, finishT = 3, 3
-    last, tmax = s, max([max(ts) for ts in cstrs.values()])
+    
+    initial_tmax_from_cstrs = 0
+    if cstrs:
+        try:
+            initial_tmax_from_cstrs = max([max(ts) for ts in cstrs.values() if ts]) #确保ts不为空
+        except ValueError:
+            initial_tmax_from_cstrs = 0
+    else:
+        initial_tmax_from_cstrs = 0
+
+    last, tmax = s, initial_tmax_from_cstrs
     if len(trans) > 0:
-        (_,_),(last,tmax),_ = trans[-1]
+
+        last_transition = trans[-1]
+        final_state = last_transition[1]
+        last = final_state[0]
+        tmax_from_trans_actual = final_state[1]
+        true_max_t_in_trans = 0
+        for prev_s, curr_s, act_s in trans:
+            true_max_t_in_trans = max(true_max_t_in_trans, prev_s[1], curr_s[1])
+        print(f"Inside _draw_ani: True max_t by iterating trans = {true_max_t_in_trans}")
+        tmax = true_max_t_in_trans 
     totalT = tmax + initT + finishT
+
     numframes = totalT * framePerT
+
     header = ax.annotate(
         f"[START] ({s.x}, {s.y}) at 0",
         xy=(g.width*D*0.75, g.height*D*0.1),
@@ -198,18 +213,16 @@ def _draw_ani(g: GridMap, s: Vert, targets: list[Vert], trans: list[Trans], cstr
         if frame % framePerT > 0:
             tr += 1
         tl %= totalT
-        # start
         if tl < initT:
             pass
-        # executing
-        elif tl >= initT and tl < initT + tmax:
+        elif tl >= initT and tl < initT + tmax: 
             if len(trans) > tl-initT:
                 (v1,t1), (v2,t2), action = trans[tl-initT]
-                if action is Action("MOVE"):
+                if action == Action.MOVE:
                     header.set_text(f"[MOVE] ({v1.x}, {v1.y}) at {t1}")
-                elif action is Action("SERVE"):
+                elif action == Action.SERVE:
                     header.set_text(f"[SERVE] ({v1.x}, {v1.y}) at {t1}")
-                elif action is Action("WAIT"):
+                elif action == Action.WAIT:
                     header.set_text(f"[WAIT] ({v1.x}, {v1.y}) at {t1}")
                 perc = (frame % framePerT) / framePerT
                 if not draw_trans:
@@ -226,8 +239,6 @@ def _draw_ani(g: GridMap, s: Vert, targets: list[Vert], trans: list[Trans], cstr
                 if (tl-initT) in cstrs[v]:
                     oid = dynObstID.get((v, tl-initT))
                     if oid is not None:
-                    # if oid is not None:
-                    # print (f"{v} {tl-initT}, color: {obstColor[oid]}")
                         obst.set_color(obstColor[oid])
                         obst.set_alpha(0.5)
                     obj.set_alpha(0.5)
@@ -236,25 +247,23 @@ def _draw_ani(g: GridMap, s: Vert, targets: list[Vert], trans: list[Trans], cstr
                     obst.set_color("gray")
                     obj.set_alpha(0.1)
             for v, task in tasks.items():
-                if servetime.get(v, tmax + initT) <= (tl-initT):
+                if servetime.get(v, tmax + initT + 1) <= (tl-initT):
                     task.set_facecolor("orange")
                 else:
                     task.set_facecolor("none")
-        # finish
         else:
             for v, task in tasks.items():
                 task.set_facecolor("orange")
-            header.set_text(f"[FINISH] ({last.x}, {last.y}) at {tmax}")
+            header.set_text(f"[FINISH] ({last.x}, {last.y}) at {tmax}") 
         return ([header] + list(tasks.values()) + list(cstrObjs.values()) + [curPos])
 
-    # Create animation
     from tqdm.auto import tqdm
     import numpy as np
 
     ani = FuncAnimation(
         fig,
         update_plot,
-        frames=tqdm(np.arange(numframes), initial=1), # type: ignore
+        frames=tqdm(np.arange(numframes), initial=1, total=numframes), 
         interval=frame_delay,
         blit=True,
     )
@@ -304,6 +313,6 @@ if __name__ == "__main__":
         save = int(argv[4])
     ani = draw_animation(mapfile, jsonfile, planfile, "", framePerT=5, draw_trans=False)
     if save:
-        ani.save("sipp-tsp.mp4")
+        ani.save("sipp-tsp2.mp4")
     else:
         plt.show()

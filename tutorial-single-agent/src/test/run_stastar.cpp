@@ -7,6 +7,7 @@
 #include "dynscens.hpp"
 #include "gridmap.hpp"
 using namespace std;
+namespace fs = std::filesystem;
 
 void save_path(const vector<STAstar::STState>& path, string fn) {
 	ofstream fout(fn);
@@ -15,7 +16,7 @@ void save_path(const vector<STAstar::STState>& path, string fn) {
 	}
 }
 
-void run(movingai::gridmap& g, dynenv::DynScen& scen) {
+void run(movingai::gridmap& g, dynenv::DynScen& scen, const string& output_dir_prefix) {
 
 	STAstar solver(g, scen.node_constraints, g.width_, g.height_);
 	auto sy = scen.source / g.width_;
@@ -28,8 +29,23 @@ void run(movingai::gridmap& g, dynenv::DynScen& scen) {
 				scen.source, sx, sy, t, tx, ty, cost) << endl;
 		auto path = solver.get_path();
 		assert (solver.validate(path));
-		save_path(path, to_string(scen.source) + "-" + to_string(t) + "-plan.txt");
+		string plan_filename_base = to_string(scen.source) + "-" + to_string(t) + "-plan.txt";
+            fs::path full_output_path = fs::path(output_dir_prefix) / plan_filename_base;
+            
+            save_path(path, full_output_path.string());
 	}
+}
+
+string get_map_type_prefix(const string& filename) {
+    fs::path p(filename);
+    string stem = p.stem().string();
+
+    if (stem.rfind("empty", 0) == 0) return "empty";
+    if (stem.rfind("maze", 0) == 0) return "maze";
+    if (stem.rfind("random", 0) == 0) return "random";
+    if (stem.rfind("warehouse", 0) == 0) return "warehouse";
+    
+    return "unknown";
 }
 
 int main(int argc, char** argv) {
@@ -39,6 +55,10 @@ int main(int argc, char** argv) {
 	movingai::gridmap g(mapfile);
 	dynenv::DynScen scen;
 	vector<dynenv::DynScen> scens;
+	string map_type = get_map_type_prefix(scenfile);
 	dynenv::load_and_parse_json(scenfile, scens);
-	run(g, scens[0]);
+	fs::path scen_dir = fs::path(scenfile).parent_path(); // Gets the directory part, e.g., "../scens"
+	fs::path stastar_dir = scen_dir / "stastar-res";
+    fs::path full_path = scen_dir / map_type;
+	run(g, scens[0], full_path);
 }

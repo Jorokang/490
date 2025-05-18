@@ -1,3 +1,0 @@
-#include <fmt/format.h>
-
-using fmt::format;
