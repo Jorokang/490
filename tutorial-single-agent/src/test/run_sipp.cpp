@@ -41,8 +41,11 @@ void run(movingai::gridmap& g, dynenv::DynScen& scen, const string& output_dir_p
     for (auto t : scen.targetSet) {
         auto ty = t / g.width_;
         auto tx = t % g.width_;
-        
+        auto tstart = std::chrono::steady_clock::now();
         auto cost = solver.run(sx, sy, tx, ty);
+        auto tnow = std::chrono::steady_clock::now();
+        auto tcost = chrono::duration<double>(tnow - tstart).count();
+        cout << format("\tSIPP: cost {} runtime: {:3f}s", cost, tcost) << endl;
         cout << format("[{}]({}, {}) to [{}]({}, {}): cost {}",
                        scen.source, sx, sy, t, tx, ty, cost)
              << endl;

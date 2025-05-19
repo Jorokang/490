@@ -21,12 +21,14 @@ public:
   using vid = movingai::vid;
   using Cost = int;
   using ID = int;
+  const Time INFT = numeric_limits<Time>::max() / 2;
 
     struct Time_interval {
         Time start;
         Time end;
+        int key;
     
-        Time_interval(int start = 0, int end = 0) : start(start), end(end) {}
+        Time_interval(int start = 0, int end = 0, int key = 0) : start(start), end(end), key(key) {}
 
         bool operator<(const Time_interval& other) const {
             if (start != other.start) {
@@ -38,6 +40,11 @@ public:
         bool operator==(const Time_interval& other) const {
             return start == other.start && end == other.end;
         }
+    };
+
+    struct GVar {
+        Cost g;
+        int round;
     };
 
     struct SIPP_state {
@@ -86,12 +93,13 @@ public:
 
     vector<Node> nodes;
     vector<int> parent;
-    set<tuple<vid, vid, Time_interval>> frontier;
-    std::map<std::tuple<vid, vid, Time_interval>, Cost> state_g_values;
+    //std::map<std::tuple<vid, vid, Time_interval>, Cost> state_g_values;
+    vector<vector<GVar>> gtable;
     ID bestID, curID;
     Cost best;
 
     int width, height;
+    int global_round = 0;
     const gridmap &grid;
     const dynenv::NodeCSTRs &cstrs;
 
@@ -111,7 +119,16 @@ public:
     }
 
     SIPP(const gridmap &g, const dynenv::NodeCSTRs &cs, int w, int h)
-      : grid(g), cstrs(cs), width(w), height(h){};
+      : grid(g), cstrs(cs), width(w), height(h){
+        init_all_safe_intervals();
+        gtable.resize(w * h);
+        for (int i = 0; i < h * w; i++) {
+            if (cstrs.find(i) == cstrs.end())
+                gtable[i].resize(1);
+            else
+                gtable[i].resize(cstrs.at(i).size() + 1);
+        }
+      };
 
     inline vid id(const vid &x, const vid &y) const { return y * width + x; }
 
@@ -120,16 +137,23 @@ public:
         return abs(x - gx) + abs(y - gy);
     }
 
+    inline Cost gval(vid cid, int key) {
+        if(gtable[cid][key].round == global_round) {
+            return gtable[cid][key].g;
+        }
+        else {
+            return INFT;
+        }
+    }
+
     inline void init_search() {
         nodes.clear();
         parent.clear();
-        frontier.clear();
-        state_g_values.clear();
+        //state_g_values.clear();
         bestID = -1;
         curID = -1;
         best = -1;
-
-        init_all_safe_intervals();
+        global_round++;
     }
 
     void init_all_safe_intervals() {
@@ -146,7 +170,7 @@ public:
                 auto constraints = cstrs.find(c_id);
                 if (constraints != cstrs.end()) {
                     for (const auto& constraint : constraints->second) {
-                        unsafe_intervals.emplace_back(constraint.tl, constraint.tr);
+                        unsafe_intervals.emplace_back(constraint.tl, constraint.tr, -1);
                     }
                 }
 
@@ -154,18 +178,19 @@ public:
 
                 std::vector<Time_interval> safe_intervals;
                 Time last_unsafe_end = -1;
+                int current_key = 0;
                 for (const auto& unsafe_interval : unsafe_intervals) {
                     if (unsafe_interval.start > last_unsafe_end + 1) {
-                        safe_intervals.push_back({last_unsafe_end + 1, unsafe_interval.start - 1});
+                        safe_intervals.push_back({last_unsafe_end + 1, unsafe_interval.start - 1, current_key++});
                     }
                     last_unsafe_end = std::max(last_unsafe_end, unsafe_interval.end);
                 }
 
                 if (last_unsafe_end < max_time -1) {
-                    safe_intervals.push_back({last_unsafe_end + 1, max_time -1});
+                    safe_intervals.push_back({last_unsafe_end + 1, max_time -1, current_key++});
                 }
                 else if (unsafe_intervals.empty()) {
-                    safe_intervals.push_back({0, max_time -1});
+                    safe_intervals.push_back({0, max_time -1, current_key++});
                 }
                 all_safe_intervals[c_id] = safe_intervals;
             }
@@ -216,16 +241,13 @@ public:
         const std::vector<Time_interval>& safe_intervals = it_start_intervals->second;
         for (const auto& interval : safe_intervals) {
           q.push(gen_node(sx, sy, interval, interval.start, hVal(sx, sy, gx, gy), interval.start));
-          frontier.insert({sx, sy, interval});
-          state_g_values[{sx, sy, interval}] = interval.start;
+          //state_g_values[{sx, sy, interval}] = interval.start;
+          gtable[id(sx, sy)][interval.key] = {interval.start, global_round};
         }
 
         while (!q.empty()) {
           curID = q.top();
           q.pop();
-          if(!is_safe(cur().state.x, cur().state.y, cur().arrival_time)) {
-            continue;
-          }
           if (cur().isAt(gx, gy)) {
             best = cur().g;
             bestID = curID;
@@ -235,6 +257,13 @@ public:
                 continue;
             }
           }
+          //auto cur_it = state_g_values.find({cur().state.x, cur().state.y, cur().state.interval});
+          //if(cur_it != state_g_values.end() && cur().arrival_time >= cur_it->second) {
+          //  continue;
+          //}
+          if(gval(id(cur().state.x, cur().state.y), cur().state.interval.key) <= cur().arrival_time)
+            continue;
+
           
             const static int nummoves = 5;
             const static vid dx[] = {1, -1, 0, 0, 0};
@@ -264,14 +293,18 @@ public:
                     if(new_arrival_time > interval.end || new_arrival_time < interval.start) {
                         continue;
                     }
-                    if(frontier.count({nx, ny, interval}) && new_arrival_time >= state_g_values.at({nx, ny, interval})) {
+                    //auto it = state_g_values.find({nx, ny, interval});
+                    //if(it != state_g_values.end() && new_arrival_time >= it->second) {
+                    //    continue;
+                    //}
+                    if(gval(id(nx, ny), interval.key) <= new_arrival_time) {
                         continue;
                     }
                     ID nid = gen_node(nx, ny, interval, new_arrival_time, hVal(nx, ny, gx, gy), new_arrival_time);
+                    gtable[id(nx, ny)][interval.key] = {new_arrival_time, global_round};
                     q.push(nid);
                     parent[nid] = curID;
-                    frontier.insert({nx, ny, interval});
-                    state_g_values[{nx, ny, interval}] = new_arrival_time;
+                    //state_g_values[{nx, ny, interval}] = new_arrival_time;
                 }
             }
 
@@ -297,7 +330,7 @@ public:
             path.emplace_back(n.state.x, n.state.y, n.arrival_time);
             curID = parent.at(curID);
         }
-        std::reverse(path.begin(), path.end()); // Path is reconstructed backwards
+        std::reverse(path.begin(), path.end()); 
         return path;
     }
 
