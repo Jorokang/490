@@ -261,7 +261,7 @@ public:
           //if(cur_it != state_g_values.end() && cur().arrival_time >= cur_it->second) {
           //  continue;
           //}
-          if(gval(id(cur().state.x, cur().state.y), cur().state.interval.key) <= cur().arrival_time)
+          if(gval(id(cur().state.x, cur().state.y), cur().state.interval.key) < cur().arrival_time)
             continue;
 
           
