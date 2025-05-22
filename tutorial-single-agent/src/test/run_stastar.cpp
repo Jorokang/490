@@ -20,10 +20,10 @@ void run(movingai::gridmap& g, dynenv::DynScen& scen, const string& output_dir_p
 
 	STAstar solver(g, scen.node_constraints, g.width_, g.height_);
 	auto sy = scen.source / g.width_;
-	auto sx = scen.source % g.width_;
+    auto sx = scen.source % g.width_;
 	for (auto t: scen.targetSet) {
 		auto ty = t / g.width_;
-		auto tx = t % g.width_; 
+        auto tx = t % g.width_;
 		auto cost = solver.run(sx, sy, tx, ty);
 		cout << format("[{}]({}, {}) to [{}]({}, {}): cost {}", 
 				scen.source, sx, sy, t, tx, ty, cost) << endl;

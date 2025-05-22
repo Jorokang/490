@@ -14,7 +14,7 @@ using namespace std;
 using namespace movingai;
 
 
-class SIPP {
+class mt_SIPP {
 public:
   using gridmap = movingai::gridmap;
   using Time = dynenv::Time;
@@ -47,33 +47,33 @@ public:
         int round;
     };
 
-    struct SIPP_state {
+    struct mt_SIPP_state {
         vid x;
         vid y;
         Time_interval interval;
 
-        SIPP_state(vid x_coord, vid y_coord, Time_interval ti) : x(x_coord), y(y_coord), interval(ti) {}
-        SIPP_state() : x(0), y(0), interval(0,0) {}
+        mt_SIPP_state(vid x_coord, vid y_coord, Time_interval ti) : x(x_coord), y(y_coord), interval(ti) {}
+        mt_SIPP_state() : x(0), y(0), interval(0,0) {}
 
-        bool operator<(const SIPP_state& other) const {
+        bool operator<(const mt_SIPP_state& other) const {
             if (x != other.x) return x < other.x;
             if (y != other.y) return y < other.y;
             return interval < other.interval;
         }
 
-        bool operator==(const SIPP_state& other) const {
+        bool operator==(const mt_SIPP_state& other) const {
             return x == other.x && y == other.y && interval == other.interval;
         }
     };
 
     struct Node {
-        SIPP_state state;
+        mt_SIPP_state state;
         Cost g;
         Cost h;
         Time arrival_time;
 
         Node(int x, int y, Time_interval interval, Cost g = 0, Cost h = 0, Time time = 0) {
-            state = SIPP_state(x, y, interval);
+            state = mt_SIPP_state(x, y, interval);
             this->g = g;
             this->h = h;
             this->arrival_time = time;
@@ -95,6 +95,7 @@ public:
     vector<int> parent;
     //std::map<std::tuple<vid, vid, Time_interval>, Cost> state_g_values;
     vector<vector<GVar>> gtable;
+    STStateTracker tracker;
     ID bestID, curID;
     Cost best;
 
@@ -118,10 +119,11 @@ public:
         return nodes.size() - 1;
     }
 
-    SIPP(const gridmap &g, const dynenv::NodeCSTRs &cs, int w, int h)
+    mt_SIPP(const gridmap &g, const dynenv::NodeCSTRs &cs, string& filename, int w, int h)
       : grid(g), cstrs(cs), width(w), height(h){
         init_all_safe_intervals();
         gtable.resize(w * h);
+        tracker.loadStatesFromFile(filename);
         for (int i = 0; i < h * w; i++) {
             if (cstrs.find(i) == cstrs.end())
                 gtable[i].resize(1);
@@ -132,9 +134,9 @@ public:
 
     inline vid id(const vid &x, const vid &y) const { return y * width + x; }
 
-    inline double hVal(const vid &x, const vid &y, const vid &gx, const vid &gy) {
-		// using Manhattans distance in 4-connected grid
-        return abs(x - gx) + abs(y - gy);
+    inline double hVal(const vid &x, const vid &y) {
+        return tracker.getMinDistanceToPoint(x, y);
+        
     }
 
     inline Cost gval(vid cid, int key) {
@@ -199,30 +201,10 @@ public:
 
     inline const Node &cur() const { return this->nodes.at(curID); }
 
-    Time get_target_critical_time(vid target_gx, vid target_gy) const {
-        Time max_tr_at_target = -1;
-        long target_node_id = id(target_gx, target_gy);
-  
-        auto it = cstrs.find(target_node_id);
-        if (it != cstrs.end()) {
-            if (it->second.empty()) {
-                return 0;
-            }
-            for (const auto& constraint : it->second) {
-                if (constraint.tr > max_tr_at_target) {
-                    max_tr_at_target = constraint.tr;
-                }
-            }
-        } else {
-            return 0;
-        }
-  
-        return (max_tr_at_target == -1) ? 0 : max_tr_at_target;
-    }
 
-    Cost run(vid sx, vid sy, vid gx, vid gy) {
+
+    Cost run(vid sx, vid sy) {
         init_search();
-        Time critical_time = get_target_critical_time(gx, gy);
 
 		// The priority_queue only store index of the data,
 		// So we need a customized comparetor
@@ -240,7 +222,7 @@ public:
         }
         const std::vector<Time_interval>& safe_intervals = it_start_intervals->second;
         for (const auto& interval : safe_intervals) {
-          q.push(gen_node(sx, sy, interval, interval.start, hVal(sx, sy, gx, gy), interval.start));
+          q.push(gen_node(sx, sy, interval, interval.start, hVal(sx, sy), interval.start));
           //state_g_values[{sx, sy, interval}] = interval.start;
           gtable[id(sx, sy)][interval.key] = {interval.start, global_round};
         }
@@ -248,14 +230,11 @@ public:
         while (!q.empty()) {
           curID = q.top();
           q.pop();
-          if (cur().isAt(gx, gy)) {
+          auto current_target = tracker.getCoordinatesAtTime(cur().arrival_time);
+          if (cur().isAt(current_target.first, current_target.second)) {
             best = cur().g;
             bestID = curID;
-            if (cur().g > critical_time) {
-                break;
-            } else {
-                continue;
-            }
+            break;
           }
           //auto cur_it = state_g_values.find({cur().state.x, cur().state.y, cur().state.interval});
           //if(cur_it != state_g_values.end() && cur().arrival_time >= cur_it->second) {
@@ -300,11 +279,11 @@ public:
                     if(gval(id(nx, ny), interval.key) <= new_arrival_time) {
                         continue;
                     }
-                    ID nid = gen_node(nx, ny, interval, new_arrival_time, hVal(nx, ny, gx, gy), new_arrival_time);
+                    ID nid = gen_node(nx, ny, interval, new_arrival_time, hVal(nx, ny), new_arrival_time);
                     gtable[id(nx, ny)][interval.key] = {new_arrival_time, global_round};
                     q.push(nid);
                     parent[nid] = curID;
-                    state_g_values[{nx, ny, interval}] = new_arrival_time;
+                    //state_g_values[{nx, ny, interval}] = new_arrival_time;
                 }
             }
 
@@ -328,6 +307,7 @@ public:
         while (curID != -1) {
             const Node& n = nodes.at(curID);
             path.emplace_back(n.state.x, n.state.y, n.arrival_time);
+            printf("(%d, %d, %d)\n", n.state.x, n.state.y, n.arrival_time);
             curID = parent.at(curID);
         }
         std::reverse(path.begin(), path.end()); 
