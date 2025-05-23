@@ -112,7 +112,7 @@ public:
         }
     }
 
-    int getMinDistanceToPoint(vid target_x, vid target_y) const {
+    int getMinDistanceToPoint(vid target_x, vid target_y, Time t) const {
         if (states.empty()) {
             return std::numeric_limits<int>::max();
         }
@@ -120,6 +120,9 @@ public:
         int min_distance = std::numeric_limits<int>::max();
 
         for (const auto& state : states) {
+            if (state.t <= t) {
+                continue;
+            }
             int diff_x = state.x - target_x;
             int abs_diff_x = std::abs(diff_x);
 

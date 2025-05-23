@@ -134,8 +134,8 @@ public:
 
     inline vid id(const vid &x, const vid &y) const { return y * width + x; }
 
-    inline double hVal(const vid &x, const vid &y) {
-        return tracker.getMinDistanceToPoint(x, y);
+    inline double hVal(const vid &x, const vid &y, Time t) {
+        return tracker.getMinDistanceToPoint(x, y, t);
         
     }
 
@@ -222,7 +222,7 @@ public:
         }
         const std::vector<Time_interval>& safe_intervals = it_start_intervals->second;
         for (const auto& interval : safe_intervals) {
-          q.push(gen_node(sx, sy, interval, interval.start, hVal(sx, sy), interval.start));
+          q.push(gen_node(sx, sy, interval, interval.start, hVal(sx, sy, interval.start), interval.start));
           //state_g_values[{sx, sy, interval}] = interval.start;
           gtable[id(sx, sy)][interval.key] = {interval.start, global_round};
         }
@@ -279,7 +279,7 @@ public:
                     if(gval(id(nx, ny), interval.key) <= new_arrival_time) {
                         continue;
                     }
-                    ID nid = gen_node(nx, ny, interval, new_arrival_time, hVal(nx, ny), new_arrival_time);
+                    ID nid = gen_node(nx, ny, interval, new_arrival_time, hVal(nx, ny, new_arrival_time), new_arrival_time);
                     gtable[id(nx, ny)][interval.key] = {new_arrival_time, global_round};
                     q.push(nid);
                     parent[nid] = curID;
