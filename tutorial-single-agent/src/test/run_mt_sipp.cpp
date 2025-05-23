@@ -36,9 +36,9 @@ void save_path(const SIPP& solver, const std::vector<SIPP::STState>& path, const
 void run(movingai::gridmap& g, dynenv::DynScen& scen, const string& output_dir_prefix) {
     SIPP solver(g, scen.node_constraints, g.width_, g.height_);
     auto sy = 8;
-    auto sx = 8;
+    auto sx = 15;
     STStateTracker tracker;
-    string filename = "../scens/sipp-res/maze/426-527-plan.txt";
+    string filename = "../trackers/target_trajectory_1.txt";
     tracker.loadStatesFromFile(filename);
     auto tstart = std::chrono::steady_clock::now();
     for (Time t = 0; t < numeric_limits<Time>::max(); ++t) {
@@ -73,10 +73,9 @@ void run(movingai::gridmap& g, dynenv::DynScen& scen, const string& output_dir_p
     auto tnow = std::chrono::steady_clock::now();
     auto tcost = chrono::duration<double>(tnow - tstart).count();
     printf("SIPP:  runtime: %fs\n", tcost);
-
-    mt_SIPP mt_solver(g, scen.node_constraints, filename,  g.width_, g.height_);
+    mt_SIPP mt_solver(g, scen.node_constraints, g.width_, g.height_);
     tstart = std::chrono::steady_clock::now();
-    auto mt_cost = mt_solver.run(sx, sy);
+    auto mt_cost = mt_solver.run(sx, sy, 108, tracker);
     tnow = std::chrono::steady_clock::now();
     tcost = chrono::duration<double>(tnow - tstart).count();
     auto found_target = tracker.getCoordinatesAtTime(mt_cost);

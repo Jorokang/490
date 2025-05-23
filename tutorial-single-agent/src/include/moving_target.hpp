@@ -120,9 +120,6 @@ public:
         int min_distance = std::numeric_limits<int>::max();
 
         for (const auto& state : states) {
-            if (state.t <= t) {
-                continue;
-            }
             int diff_x = state.x - target_x;
             int abs_diff_x = std::abs(diff_x);
 

@@ -251,11 +251,14 @@ public:
           if (cur().isAt(gx, gy)) {
             best = cur().g;
             bestID = curID;
+            /*
             if (cur().g > critical_time) {
                 break;
             } else {
                 continue;
             }
+            */
+            break;
           }
           //auto cur_it = state_g_values.find({cur().state.x, cur().state.y, cur().state.interval});
           //if(cur_it != state_g_values.end() && cur().arrival_time >= cur_it->second) {
@@ -304,7 +307,7 @@ public:
                     gtable[id(nx, ny)][interval.key] = {new_arrival_time, global_round};
                     q.push(nid);
                     parent[nid] = curID;
-                    state_g_values[{nx, ny, interval}] = new_arrival_time;
+                    //state_g_values[{nx, ny, interval}] = new_arrival_time;
                 }
             }
 
@@ -328,6 +331,7 @@ public:
         while (curID != -1) {
             const Node& n = nodes.at(curID);
             path.emplace_back(n.state.x, n.state.y, n.arrival_time);
+            printf("(%d, %d, %d)\n", n.state.x, n.state.y, n.arrival_time);
             curID = parent.at(curID);
         }
         std::reverse(path.begin(), path.end()); 

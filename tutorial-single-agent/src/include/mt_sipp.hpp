@@ -95,7 +95,6 @@ public:
     vector<int> parent;
     //std::map<std::tuple<vid, vid, Time_interval>, Cost> state_g_values;
     vector<vector<GVar>> gtable;
-    STStateTracker tracker;
     ID bestID, curID;
     Cost best;
 
@@ -105,7 +104,7 @@ public:
     const dynenv::NodeCSTRs &cstrs;
 
     std::map<vid, std::vector<Time_interval>> all_safe_intervals;
-    Time max_time = std::numeric_limits<int>::max();
+    Time max_time = std::numeric_limits<int>::max() / 2;
 
     inline ID gen_node(int x, int y, Time_interval interval = {0, 0}, Cost g = 0, Cost h = 0, Time arrival_t = 0) {
         if (nodes.size() + 1 >= nodes.capacity()) {
@@ -119,11 +118,11 @@ public:
         return nodes.size() - 1;
     }
 
-    mt_SIPP(const gridmap &g, const dynenv::NodeCSTRs &cs, string& filename, int w, int h)
+    mt_SIPP(const gridmap &g, const dynenv::NodeCSTRs &cs, int w, int h)
       : grid(g), cstrs(cs), width(w), height(h){
         init_all_safe_intervals();
         gtable.resize(w * h);
-        tracker.loadStatesFromFile(filename);
+        //tracker.loadStatesFromFile(filename);
         for (int i = 0; i < h * w; i++) {
             if (cstrs.find(i) == cstrs.end())
                 gtable[i].resize(1);
@@ -134,7 +133,7 @@ public:
 
     inline vid id(const vid &x, const vid &y) const { return y * width + x; }
 
-    inline double hVal(const vid &x, const vid &y, Time t) {
+    inline double hVal(const vid &x, const vid &y, Time t, STStateTracker& tracker) {
         return tracker.getMinDistanceToPoint(x, y, t);
         
     }
@@ -203,7 +202,7 @@ public:
 
 
 
-    Cost run(vid sx, vid sy) {
+    Cost run(vid sx, vid sy, Time agent_available_at_t, STStateTracker& tracker) {
         init_search();
 
 		// The priority_queue only store index of the data,
@@ -214,17 +213,21 @@ public:
         priority_queue<int, vector<int>, decltype(pcmp)> q(pcmp);
 
         best = bestID = -1;
-        vid grid_id = sy * width + sx;
+        vid start_id = sy * width + sx;
 
-        auto it_start_intervals = all_safe_intervals.find(grid_id);
+        auto it_start_intervals = all_safe_intervals.find(start_id);
         if (it_start_intervals == all_safe_intervals.end() || it_start_intervals->second.empty()) {
             return -1;
         }
         const std::vector<Time_interval>& safe_intervals = it_start_intervals->second;
         for (const auto& interval : safe_intervals) {
-          q.push(gen_node(sx, sy, interval, interval.start, hVal(sx, sy, interval.start), interval.start));
+          if (interval.end < agent_available_at_t) {
+            continue;
+          }
+          Time start_time = std::max(agent_available_at_t, interval.start);
+          q.push(gen_node(sx, sy, interval, start_time, hVal(sx, sy, start_time, tracker), start_time));
           //state_g_values[{sx, sy, interval}] = interval.start;
-          gtable[id(sx, sy)][interval.key] = {interval.start, global_round};
+          gtable[id(sx, sy)][interval.key] = {start_time, global_round};
         }
 
         while (!q.empty()) {
@@ -279,7 +282,7 @@ public:
                     if(gval(id(nx, ny), interval.key) <= new_arrival_time) {
                         continue;
                     }
-                    ID nid = gen_node(nx, ny, interval, new_arrival_time, hVal(nx, ny, new_arrival_time), new_arrival_time);
+                    ID nid = gen_node(nx, ny, interval, new_arrival_time, hVal(nx, ny, new_arrival_time, tracker), new_arrival_time);
                     gtable[id(nx, ny)][interval.key] = {new_arrival_time, global_round};
                     q.push(nid);
                     parent[nid] = curID;
@@ -307,7 +310,6 @@ public:
         while (curID != -1) {
             const Node& n = nodes.at(curID);
             path.emplace_back(n.state.x, n.state.y, n.arrival_time);
-            printf("(%d, %d, %d)\n", n.state.x, n.state.y, n.arrival_time);
             curID = parent.at(curID);
         }
         std::reverse(path.begin(), path.end()); 
